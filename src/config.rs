@@ -4,6 +4,28 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+/// Remembered main-window geometry, so the program reopens where it was left.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct WindowState {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub maximized: bool,
+}
+
+impl WindowState {
+    /// True when a usable size was stored (0.0 means "never saved").
+    pub fn has_size(&self) -> bool {
+        self.w >= 940.0 && self.h >= 640.0 && self.w.is_finite() && self.h.is_finite()
+    }
+
+    pub fn has_position(&self) -> bool {
+        self.x.is_finite() && self.y.is_finite() && (self.x != 0.0 || self.y != 0.0)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -17,6 +39,7 @@ pub struct Config {
     /// UI language: "ru" or "en".
     pub lang: String,
     pub last_seen_release: Option<String>,
+    pub window: WindowState,
 }
 
 impl Default for Config {
@@ -30,6 +53,7 @@ impl Default for Config {
             auto_discover: true,
             lang: crate::i18n::system_lang().code().to_string(),
             last_seen_release: None,
+            window: WindowState::default(),
         }
     }
 }
@@ -37,10 +61,12 @@ impl Default for Config {
 impl Config {
     pub fn load() -> Self {
         let path = util::config_path();
-        let Ok(text) = fs::read_to_string(&path) else {
+        let Ok(raw) = fs::read_to_string(&path) else {
             return Self::default();
         };
-        match serde_json::from_str::<Config>(&text) {
+        // A byte-order mark (Notepad, PowerShell) must not reset the settings.
+        let text = raw.trim_start_matches('\u{feff}');
+        match serde_json::from_str::<Config>(text) {
             Ok(mut cfg) => {
                 cfg.schema = 2;
                 if crate::i18n::Lang::from_code(&cfg.lang).is_none() {

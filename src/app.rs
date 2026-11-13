@@ -68,6 +68,7 @@ pub struct App {
     scan: Option<GameScan>,
     scanning: bool,
     pending_rescan: bool,
+    last_geom_save: Option<std::time::Instant>,
     proxy_choice: String,
     remove_extra: bool,
     latest: Option<Release>,
@@ -125,6 +126,7 @@ impl App {
             scan: None,
             scanning: false,
             pending_rescan: false,
+            last_geom_save: None,
             proxy_choice: PROXIES[0].to_string(),
             remove_extra: true,
             latest: None,
@@ -991,18 +993,16 @@ impl App {
                             ui.horizontal(|ui| {
                                 let resp = ui.add(
                                     egui::Label::new(
-                                        rt(format!(
-                                            "{}",
-                                            short_path(&inst.path, 30)
-                                        ))
-                                        .color(if active { ACCENT } else { TEXT })
-                                        .size(12.5),
+                                        rt(game_name(&inst.path))
+                                            .color(if active { ACCENT } else { TEXT })
+                                            .size(12.5),
                                     )
                                     .sense(egui::Sense::click()),
                                 );
                                 if resp.clicked() {
                                     pick = Some(inst.path.clone());
                                 }
+                                resp.on_hover_text(inst.path.display().to_string());
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),
                                     |ui| {
@@ -1991,6 +1991,45 @@ impl App {
     }
 }
 
+impl App {
+    /// Remember size, position and the maximized flag of the main window.
+    fn save_window_geometry(&mut self, ctx: &egui::Context) {
+        let (outer, inner, maximized) = ctx.input(|i| {
+            let vp = i.viewport();
+            (vp.outer_rect, vp.inner_rect, vp.maximized.unwrap_or(false))
+        });
+        let (Some(outer), Some(inner)) = (outer, inner) else {
+            return;
+        };
+        let win = &mut self.cfg.window;
+        let mut dirty = win.maximized != maximized;
+        if !maximized && inner.width() >= 940.0 && inner.height() >= 640.0 {
+            dirty |= (win.x - outer.min.x).abs() > 1.0
+                || (win.y - outer.min.y).abs() > 1.0
+                || (win.w - inner.width()).abs() > 1.0
+                || (win.h - inner.height()).abs() > 1.0;
+            win.x = outer.min.x;
+            win.y = outer.min.y;
+            win.w = inner.width();
+            win.h = inner.height();
+        }
+        win.maximized = maximized;
+        if !dirty {
+            return;
+        }
+        // Do not hit the disk on every frame while the window is being dragged.
+        let now = std::time::Instant::now();
+        if self
+            .last_geom_save
+            .map(|t| now.duration_since(t).as_millis() >= 1200)
+            .unwrap_or(true)
+        {
+            self.last_geom_save = Some(now);
+            let _ = self.cfg.save();
+        }
+    }
+}
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle();
@@ -2036,6 +2075,7 @@ impl eframe::App for App {
 
                 self.toasts(ui);
             });
+        self.save_window_geometry(ctx);
     }
 }
 
@@ -2085,6 +2125,37 @@ fn rt(text: impl AsRef<str>) -> RichText {
 fn version_known(version: &str) -> bool {
     let v = version.trim();
     !v.is_empty() && !v.eq_ignore_ascii_case("неизвестна") && !v.eq_ignore_ascii_case("unknown")
+}
+
+/// Readable name of a game folder: the folder itself, skipping `bin64`-style tails.
+fn game_name(p: &Path) -> String {
+    const GENERIC: [&str; 7] = [
+        "bin64", "bin", "binaries", "win64", "win32", "x64", "x86",
+    ];
+    const MAX: usize = 26;
+    let mut cur = p;
+    while let Some(name) = cur.file_name() {
+        let lower = name.to_string_lossy().to_ascii_lowercase();
+        if GENERIC.contains(&lower.as_str()) {
+            if let Some(parent) = cur.parent() {
+                if parent.file_name().is_some() {
+                    cur = parent;
+                    continue;
+                }
+            }
+        }
+        break;
+    }
+    let name = cur
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| p.display().to_string());
+    if name.chars().count() <= MAX {
+        name
+    } else {
+        let head: String = name.chars().take(MAX - 1).collect();
+        format!("{head}…")
+    }
 }
 
 /// Log lines are stored as `[HH:MM:SS] message`; translate only the message.
