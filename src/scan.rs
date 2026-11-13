@@ -13,7 +13,7 @@ const SKIP_DIRS: [&str; 6] = [
     "cache",
 ];
 
-const ANTICHEAT_HINTS: [&str; 10] = [
+const ANTICHEAT_HINTS: [&str; 14] = [
     "easyanticheat",
     "battleye",
     "start_protected_game",
@@ -24,6 +24,32 @@ const ANTICHEAT_HINTS: [&str; 10] = [
     "vgc.exe",
     "faceit",
     "equ8",
+    "ricochet",
+    "nprotect",
+    "gameguard",
+    "xigncode",
+];
+
+/// Games whose anti-cheat is installed outside the game folder (service/driver),
+/// so it cannot be found by scanning files. Matched against the selected exe.
+const ONLINE_AC_EXES: &[&str] = &[
+    "cod.exe",
+    "modernwarfare.exe",
+    "modernwarfare2.exe",
+    "modernwarfare3.exe",
+    "sp22-cod.exe",
+    "sp23-cod.exe",
+    "valorant.exe",
+    "valorant-win64-shipping.exe",
+    "r5apex.exe",
+    "destiny2.exe",
+    "fortniteclient-win64-shipping.exe",
+    "rainbowsix.exe",
+    "rainbowsix_dx11.exe",
+    "gta5.exe",
+    "pubg.exe",
+    "eft.exe",
+    "overwatch.exe",
 ];
 
 /// Width-first search for the first file/folder whose name matches `pred`.
@@ -286,13 +312,28 @@ pub fn scan_game(dir: &Path, gpu: &GpuInfo, pkg_version: Option<&str>) -> GameSc
         ));
     }
 
-    if let Some(ac) = find_anticheat(dir) {
+    let anticheat = find_anticheat(dir);
+    if let Some(ac) = &anticheat {
         scan.checks.push(Check::new(
             Level::Bad,
             "Обнаружен античит",
             format!(
                 "{} — прокси-DLL рядом с античитом может привести к бану. Устанавливайте только если уверены, что античит не проверяет целостность файлов.",
                 ac.file_name().unwrap_or_default().to_string_lossy()
+            ),
+        ));
+    } else if best
+        .as_ref()
+        .map(|e| ONLINE_AC_EXES.contains(&e.name.to_ascii_lowercase().as_str()))
+        .unwrap_or(false)
+    {
+        // The anti-cheat of these games does not live inside the game folder.
+        scan.checks.push(Check::new(
+            Level::Warn,
+            "Игра с онлайновым античитом",
+            format!(
+                "{} — античит этой игры (Ricochet / VAC / BattlEye) не лежит в папке игры, поэтому проверить его нельзя. Подмена DLL в онлайне может закончиться баном; в офлайне риск ниже.",
+                best.as_ref().map(|e| e.name.as_str()).unwrap_or_default()
             ),
         ));
     } else {
@@ -333,10 +374,22 @@ pub fn scan_game(dir: &Path, gpu: &GpuInfo, pkg_version: Option<&str>) -> GameSc
     }
 
     if let Some(installed) = &scan.installed {
+        let unknown = installed.version.trim().is_empty()
+            || installed.version.eq_ignore_ascii_case("неизвестна")
+            || installed.version.eq_ignore_ascii_case("unknown");
         let fresh = pkg_version
             .map(|v| crate::model::version_gt(v, &installed.version))
             .unwrap_or(false);
-        if fresh {
+        if unknown {
+            scan.checks.push(Check::new(
+                Level::Warn,
+                "Мод уже установлен (версия неизвестна)",
+                format!(
+                    "Прокси: {}. Похоже, его ставили без метки .dlssg-manager\\install.json — поставьте текущую версию пакета, чтобы версия определялась.",
+                    installed.proxy
+                ),
+            ));
+        } else if fresh {
             scan.checks.push(Check::new(
                 Level::Warn,
                 format!("Установлена версия {}", installed.version),
@@ -420,5 +473,26 @@ mod tests {
         let scan = scan_game(Path::new("Z:/definitely/not/here"), &GpuInfo::default(), None);
         assert_eq!(scan.verdict, Verdict::Unsupported);
         assert!(!scan.checks.is_empty());
+    }
+
+    #[test]
+    fn hand_made_install_and_online_anticheat_are_reported() {
+        let dir = std::env::temp_dir().join(format!("dlssgm-scan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(crate::model::PAYLOAD_DIR)).unwrap();
+        std::fs::write(dir.join("cod.exe"), b"MZ").unwrap();
+        std::fs::write(dir.join("version.dll"), b"....dlssg_sm86....").unwrap();
+        std::fs::write(dir.join("nvngx_dlssg.dll"), b"x").unwrap();
+
+        let scan = scan_game(&dir, &GpuInfo::default(), Some("0.4.1"));
+        let titles: Vec<&str> = scan.checks.iter().map(|c| c.title.as_str()).collect();
+        assert!(scan.installed.is_some());
+        assert!(
+            titles.contains(&"Мод уже установлен (версия неизвестна)"),
+            "{titles:?}"
+        );
+        assert!(titles.contains(&"Игра с онлайновым античитом"), "{titles:?}");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

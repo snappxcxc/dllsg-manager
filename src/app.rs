@@ -67,6 +67,7 @@ pub struct App {
     game_dir: String,
     scan: Option<GameScan>,
     scanning: bool,
+    pending_rescan: bool,
     proxy_choice: String,
     remove_extra: bool,
     latest: Option<Release>,
@@ -123,6 +124,7 @@ impl App {
             tab: Tab::Install,
             scan: None,
             scanning: false,
+            pending_rescan: false,
             proxy_choice: PROXIES[0].to_string(),
             remove_extra: true,
             latest: None,
@@ -365,6 +367,10 @@ impl App {
         let dir = PathBuf::from(self.game_dir.trim());
         if dir.as_os_str().is_empty() {
             self.toast("Укажите папку игры", YELLOW);
+            return;
+        }
+        // Never leave `scanning` stuck when another job holds the slot.
+        if self.job.is_some() {
             return;
         }
         self.scanning = true;
@@ -620,17 +626,10 @@ impl App {
                         }
                         self.progress = 1.0;
                         self.status = "Установлено".into();
-                        let version = self.selected_package().map(|p| p.version.clone());
-                        let gpu = self.gpu.clone();
-                        let dir = PathBuf::from(self.game_dir.trim());
-                        if let Some(job) = &mut self.job {
-                            let _ = job;
-                        }
-                        self.scanning = true;
-                        self.spawn("Проверка после установки", move |tx, _c| {
-                            let scan = scan::scan_game(&dir, &gpu, version.as_deref());
-                            let _ = tx.send(Msg::ScanDone(Box::new(scan)));
-                        });
+                        // A fresh job cannot start while the install job is still
+                        // alive, so ask for a re-scan once it is dropped.
+                        self.scanning = false;
+                        self.pending_rescan = true;
                     }
                     Err(e) => {
                         self.log(format!("Ошибка установки: {e}"));
@@ -646,7 +645,8 @@ impl App {
                         self.toast("Мод удалён", ACCENT);
                         self.scan = None;
                         self.log_info = None;
-                        self.start_scan();
+                        self.scanning = false;
+                        self.pending_rescan = true;
                     }
                     Err(e) => {
                         self.log(format!("Ошибка удаления: {e}"));
@@ -688,6 +688,10 @@ impl App {
                 self.scanning = false;
             }
             self.job = None;
+            if self.pending_rescan && !self.game_dir.trim().is_empty() {
+                self.pending_rescan = false;
+                self.start_scan();
+            }
         }
     }
 
@@ -1458,9 +1462,13 @@ impl App {
                     let pkg_ver = self.selected_package().map(|p| p.version.clone());
                     ui.horizontal(|ui| {
                         let label = match (&installed, &pkg_ver) {
-                            (Some(inst), Some(v)) if dlssgm::model::version_gt(v, &inst.version) => {
+                            (Some(inst), Some(v))
+                                if version_known(&inst.version)
+                                    && dlssgm::model::version_gt(v, &inst.version) =>
+                            {
                                 format!("Обновить {} → {}", inst.version, v)
                             }
+                            (Some(_), Some(v)) => format!("Переустановить {v}"),
                             (Some(inst), _) => format!("Переустановить {}", inst.version),
                             (None, Some(v)) => format!("Установить {v}"),
                             (None, None) => "Установить".to_string(),
@@ -2071,6 +2079,12 @@ impl App {
 /// Rich text rendered in the current UI language.
 fn rt(text: impl AsRef<str>) -> RichText {
     RichText::new(dlssgm::i18n::tr(text.as_ref()).into_owned())
+}
+
+/// True when a stored install version is a real number, not the "unknown" stub.
+fn version_known(version: &str) -> bool {
+    let v = version.trim();
+    !v.is_empty() && !v.eq_ignore_ascii_case("неизвестна") && !v.eq_ignore_ascii_case("unknown")
 }
 
 /// Log lines are stored as `[HH:MM:SS] message`; translate only the message.
