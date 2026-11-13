@@ -27,20 +27,37 @@ fn main() {
     if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
         let resource = out_dir.join("app-resource.res");
         for rc in rc_candidates() {
-            let status = Command::new(&rc)
+            // (a) from the crate root, icons resolved through the include path
+            let _ = std::fs::remove_file(&resource);
+            let from_root = Command::new(&rc)
                 .arg("/nologo")
+                .arg("/i")
+                .arg("assets")
                 .arg("/fo")
                 .arg(&resource)
                 .arg("assets/app.rc")
                 .status();
-            if let Ok(status) = status {
-                if status.success() && resource.is_file() {
-                    println!("cargo:rustc-link-arg={}", resource.display());
-                    return;
-                }
+            if matches!(from_root, Ok(s) if s.success()) && resource.is_file() {
+                println!("cargo:rustc-link-arg={}", resource.display());
+                return;
+            }
+            // (b) from inside assets/, where app.ico sits next to the .rc
+            let _ = std::fs::remove_file(&resource);
+            let from_assets = Command::new(&rc)
+                .current_dir("assets")
+                .arg("/nologo")
+                .arg("/fo")
+                .arg(&resource)
+                .arg("app.rc")
+                .status();
+            if matches!(from_assets, Ok(s) if s.success()) && resource.is_file() {
+                println!("cargo:rustc-link-arg={}", resource.display());
+                return;
             }
         }
-        println!("cargo:warning=rc.exe не найден — exe будет собран без иконки и версии");
+        println!(
+            "cargo:warning=rc.exe не найден или не смог собрать ресурс — exe без иконки и версии"
+        );
         return;
     }
 
