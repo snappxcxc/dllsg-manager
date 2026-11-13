@@ -181,7 +181,7 @@ pub fn scan_game(dir: &Path, gpu: &GpuInfo, pkg_version: Option<&str>) -> GameSc
             Level::Bad,
             "Видеокарта не NVIDIA",
             format!(
-                "Найдено: {}. Мод работает только на RTX 20/30/40/50.",
+                "Найдено: {}. Мод работает только на NVIDIA RTX 20/30.",
                 gpu.name
             ),
         ));
@@ -190,7 +190,19 @@ pub fn scan_game(dir: &Path, gpu: &GpuInfo, pkg_version: Option<&str>) -> GameSc
             Level::Warn,
             "Архитектура GPU не распознана",
             format!(
-                "{} — мод рассчитан на RTX 20 (SM75), RTX 30 (SM86), RTX 40/50.",
+                "{} — мод рассчитан на RTX 20 (SM75) и RTX 30 (SM86).",
+                gpu.name
+            ),
+        ));
+    } else if matches!(
+        gpu.arch,
+        crate::system::Arch::Sm89 | crate::system::Arch::Sm120
+    ) {
+        scan.checks.push(Check::new(
+            Level::Warn,
+            "Frame Generation уже есть нативно",
+            format!(
+                "{} — на RTX 40/50 DLSS Frame Generation работает из коробки, мод не нужен и ничего не добавит.",
                 gpu.name
             ),
         ));

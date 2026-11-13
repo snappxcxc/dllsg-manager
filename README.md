@@ -50,7 +50,8 @@
 ## Requirements
 
 - Windows 10 or 11, x64.
-- NVIDIA RTX GPU (Turing / Ampere / Ada / Blackwell).
+- NVIDIA RTX 20 or 30 series (Turing SM75 / Ampere SM86). RTX 40/50 have native frame
+  generation and do not need this mod.
 - NVIDIA driver **R580 or newer** — otherwise frame generation will not be enabled.
 - A DirectX 12 game with DLSS Frame Generation support.
 
@@ -76,8 +77,8 @@
 ## How it works
 
 The proxy DLL sits next to the game exe and intercepts the `nvngx_dlssg.dll` load, injecting the
-runtime from `dlssg_sm86\runtime`, which enables frame generation on RTX 20/30/40/50
-(SM75/SM86/PTX). This program does not contain the mod: it downloads the author's official
+runtime from `dlssg_sm86\runtime`, which enables frame generation on RTX 20/30
+(SM75/SM86). This program does not contain the mod: it downloads the author's official
 release from GitHub and unpacks it into the game folder.
 
 ## Build from source

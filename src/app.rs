@@ -1894,7 +1894,7 @@ impl App {
                 ui.add_space(12.0);
                 section_title(ui, "Как это работает");
                 theme::card(ui, |ui| {
-                    ui.label(rt("Прокси DLL кладётся рядом с EXE и перехватывает загрузку nvngx_dlssg.dll, подсовывая рантайм из dlssg_sm86\\runtime, который ставит генерацию кадров на RTX 20/30/40/50 (SM75/SM86/PTX). Требования: Windows 10/11 x64, D3D12, NVIDIA R580+.").color(MUTED).size(12.5));
+                    ui.label(rt("Прокси DLL кладётся рядом с EXE и перехватывает загрузку nvngx_dlssg.dll, подсовывая рантайм из dlssg_sm86\\runtime, который ставит генерацию кадров на RTX 20/30 (SM75/SM86). На RTX 40/50 генерация кадров есть нативно — мод им не нужен. Требования: Windows 10/11 x64, D3D12, NVIDIA R580+.").color(MUTED).size(12.5));
                     ui.add_space(6.0);
                     let (ours, _) = installer::scan_proxies(Path::new("C:\\"));
                     let _ = ours;
