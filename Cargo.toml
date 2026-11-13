@@ -1,0 +1,48 @@
+[package]
+name = "dlssg-manager"
+version = "1.0.0"
+edition = "2021"
+description = "Manager for the DLSSG-for-SM86 proxy mod: game auto-detection, compatibility check, install and GitHub updates"
+license = "MIT"
+authors = ["snappxcxc"]
+repository = "https://github.com/snappxcxc/dlssg-manager"
+readme = "README.md"
+keywords = ["dlss", "frame-generation", "nvidia", "windows", "egui"]
+categories = ["gui", "games"]
+
+[lib]
+name = "dlssgm"
+path = "src/lib.rs"
+
+[[bin]]
+name = "DLSSG-Manager"
+path = "src/main.rs"
+
+[[bin]]
+name = "dlssgm-cli"
+path = "src/bin/cli.rs"
+
+[dependencies]
+eframe = { version = "0.29", default-features = false, features = ["glow", "default_fonts"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "2.10", default-features = false, features = ["tls", "gzip"] }
+zip = { version = "2.1", default-features = false, features = ["deflate"] }
+sha2 = "0.10"
+winreg = "0.52"
+rfd = "0.15"
+
+# Game exe icons through the Win32 shell/GDI APIs (PrivateExtractIconsW/GetDIBits).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+strip = true
+codegen-units = 4

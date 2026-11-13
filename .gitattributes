@@ -1,0 +1,13 @@
+* text=auto
+
+*.rs text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.py text eol=lf
+*.rc text eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.rgba binary

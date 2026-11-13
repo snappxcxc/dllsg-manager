@@ -1,0 +1,11 @@
+# Build output
+/target
+/dist
+
+# Local settings
+*.pdb
+*.ilk
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

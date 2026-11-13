@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Тесты
+        run: cargo test --lib
+
+      - name: Сборка
+        run: cargo build --release --bin DLSSG-Manager --bin dlssgm-cli
+
+      - name: Комплект для раздачи
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/DLSSG-Manager.exe dist/
+          Copy-Item target/release/dlssgm-cli.exe dist/
+          Copy-Item README.md, LICENSE dist/
+          Compress-Archive -Path dist/* -DestinationPath DLSSG-Manager-windows-x64.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DLSSG-Manager-windows-x64
+          path: DLSSG-Manager-windows-x64.zip
+
+      - name: Публикация релиза
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: DLSSG-Manager-windows-x64.zip
+          generate_release_notes: true
+          body_path: docs/release-notes.md
