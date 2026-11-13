@@ -24,6 +24,16 @@ jobs:
       - name: Сборка
         run: cargo build --release --bin DLSSG-Manager --bin dlssgm-cli
 
+      - name: Проверка иконки и версии
+        shell: pwsh
+        run: |
+          $vi = (Get-Item "target/release/DLSSG-Manager.exe").VersionInfo
+          Write-Host "FileDescription: '$($vi.FileDescription)'"
+          Write-Host "FileVersion:     '$($vi.FileVersion)'"
+          if (-not $vi.FileDescription) {
+            throw "У exe нет ресурса: не найден rc.exe (иконка и версия не вшиты)"
+          }
+
       - name: Комплект для раздачи
         shell: pwsh
         run: |

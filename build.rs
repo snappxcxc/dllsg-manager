@@ -2,14 +2,16 @@
 //!
 //! * `*-pc-windows-gnu` targets use MinGW's `windres`, which produces a COFF
 //!   object the linker accepts.
-//! * `*-pc-windows-msvc` targets use `rc.exe` (shipped with Visual Studio),
-//!   which produces a `.res` file that `link.exe` consumes directly.
+//! * `*-pc-windows-msvc` targets use `rc.exe`, which produces a `.res` file that
+//!   `link.exe` consumes directly. `rc.exe` lives inside the Visual Studio
+//!   installation and is not always on `PATH` (GitHub Actions runners, plain
+//!   `cargo build` from a shell), so it is looked up via `vswhere` as well.
 //!
 //! When neither tool is available the build still succeeds — the exe is simply
 //! built without an icon, and cargo prints a warning.
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() {
@@ -24,16 +26,18 @@ fn main() {
 
     if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
         let resource = out_dir.join("app-resource.res");
-        let status = Command::new("rc")
-            .arg("/nologo")
-            .arg("/fo")
-            .arg(&resource)
-            .arg("assets/app.rc")
-            .status();
-        if let Ok(status) = status {
-            if status.success() && resource.is_file() {
-                println!("cargo:rustc-link-arg={}", resource.display());
-                return;
+        for rc in rc_candidates() {
+            let status = Command::new(&rc)
+                .arg("/nologo")
+                .arg("/fo")
+                .arg(&resource)
+                .arg("assets/app.rc")
+                .status();
+            if let Ok(status) = status {
+                if status.success() && resource.is_file() {
+                    println!("cargo:rustc-link-arg={}", resource.display());
+                    return;
+                }
             }
         }
         println!("cargo:warning=rc.exe не найден — exe будет собран без иконки и версии");
@@ -62,4 +66,65 @@ fn main() {
         }
     }
     println!("cargo:warning=windres не найден — exe будет собран без иконки и версии");
+}
+
+/// `rc.exe` from `PATH`, then from the newest Visual Studio installation.
+fn rc_candidates() -> Vec<PathBuf> {
+    let mut out = vec![PathBuf::from("rc")];
+
+    // Build Tools / VS installations, found through vswhere.
+    let vswhere = env::var("ProgramFiles(x86)")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(r"C:\Program Files (x86)"))
+        .join("Microsoft Visual Studio")
+        .join("Installer")
+        .join("vswhere.exe");
+
+    if let Ok(output) = Command::new(&vswhere)
+        .args(["-latest", "-products", "*", "-property", "installationPath"])
+        .output()
+    {
+        let root = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !root.is_empty() {
+            for rc in rc_in_tools(Path::new(&root)) {
+                out.push(rc);
+            }
+        }
+    }
+
+    // Direct COM/registry fallback: scan the usual install roots.
+    for base in [
+        r"C:\Program Files\Microsoft Visual Studio",
+        r"C:\Program Files (x86)\Microsoft Visual Studio",
+    ] {
+        for edition in ["BuildTools", "Community", "Professional", "Enterprise"] {
+            for year in ["2022", "2019"] {
+                let root = Path::new(base).join(year).join(edition);
+                for rc in rc_in_tools(&root) {
+                    out.push(rc);
+                }
+            }
+        }
+    }
+    out
+}
+
+fn rc_in_tools(root: &Path) -> Vec<PathBuf> {
+    let msvc = root.join("VC").join("Tools").join("MSVC");
+    let Ok(entries) = std::fs::read_dir(&msvc) else {
+        return Vec::new();
+    };
+    let mut versions: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+    versions.sort();
+    versions.reverse();
+    let mut out = Vec::new();
+    for version in versions {
+        for host in [r"Hostx64\x64", r"Hostx86\x64", r"Hostx64\x86"] {
+            let rc = version.join(host).join("rc.exe");
+            if rc.is_file() {
+                out.push(rc);
+            }
+        }
+    }
+    out
 }
