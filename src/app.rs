@@ -974,50 +974,6 @@ impl App {
                     });
 
                     ui.add_space(12.0);
-                    section_title(ui, "Мои установки");
-                    theme::card(ui, |ui| {
-                        if self.cfg.installs.is_empty() {
-                            ui.label(
-                                rt("Пока ничего не установлено.")
-                                    .color(MUTED)
-                                    .size(12.5),
-                            );
-                        }
-                        let mut pick: Option<PathBuf> = None;
-                        let installs = self.cfg.installs.clone();
-                        for inst in &installs {
-                            let active = dlssgm::config::same_path(
-                                &inst.path,
-                                &PathBuf::from(self.game_dir.trim()),
-                            );
-                            ui.horizontal(|ui| {
-                                let resp = ui.add(
-                                    egui::Label::new(
-                                        rt(game_name(&inst.path))
-                                            .color(if active { ACCENT } else { TEXT })
-                                            .size(12.5),
-                                    )
-                                    .sense(egui::Sense::click()),
-                                );
-                                if resp.clicked() {
-                                    pick = Some(inst.path.clone());
-                                }
-                                resp.on_hover_text(inst.path.display().to_string());
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        pill(ui, &inst.version, MUTED);
-                                    },
-                                );
-                            });
-                        }
-                        if let Some(path) = pick {
-                            self.game_dir = path.display().to_string();
-                            self.start_scan();
-                        }
-                    });
-
-                    ui.add_space(12.0);
                     section_title(ui, "Журнал");
                     theme::card(ui, |ui| {
                         ScrollArea::vertical()
@@ -1769,7 +1725,8 @@ impl App {
                         .or_else(|| self.cache.first().map(|p| p.version.clone()));
                     for inst in &installs {
                         ui.horizontal(|ui| {
-                            ui.label(rt(short_path(&inst.path, 52)).size(12.5));
+                            ui.label(rt(game_name(&inst.path)).size(12.5))
+                                .on_hover_text(inst.path.display().to_string());
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 let outdated = target
                                     .as_deref()
@@ -2223,8 +2180,4 @@ fn short_text(s: &str, max: usize) -> String {
         let tail: String = s.chars().rev().take(max / 2).collect::<Vec<_>>().into_iter().rev().collect();
         format!("…{tail}")
     }
-}
-
-fn short_path(p: &Path, max: usize) -> String {
-    short_text(&p.display().to_string(), max)
 }

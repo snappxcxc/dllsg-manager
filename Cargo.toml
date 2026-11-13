@@ -1,6 +1,6 @@
 [package]
 name = "dlssg-manager"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 description = "Manager for the DLSSG-for-SM86 proxy mod: game auto-detection, compatibility check, install and GitHub updates"
 license = "MIT"
